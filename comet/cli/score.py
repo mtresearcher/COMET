@@ -27,6 +27,8 @@ optional arguments:
                         (type: Path_fr, default: null)
   -d SACREBLEU_DATASET, --sacrebleu_dataset SACREBLEU_DATASET
                         (type: str, default: null)
+  --doc DOC             File containing document IDs to evaluate at the
+                        document level. (default: null)
   --batch_size BATCH_SIZE
                         (type: int, default: 16)
   --gpus GPUS           (type: int, default: 1)
@@ -59,6 +61,7 @@ from pytorch_lightning import seed_everything
 from sacrebleu.utils import get_reference_files, get_source_file
 
 from comet import download_model, load_from_checkpoint
+from comet.models.utils import add_context
 
 
 def score_command() -> None:
@@ -117,6 +120,18 @@ def score_command() -> None:
         action="store_true",
         help="Print information about COMET cache.",
     )
+    parser.add_argument(
+        "--doc",
+        type=Path_fr,
+        default=None,
+        help="File containing document IDs to evaluate at the document level.",
+    )
+    parser.add_argument(
+        "--doc_window_size",
+        type=int,
+        default=2,
+        help="Document window size i.e. how many sentences should be considered as one document?",
+    )
     cfg = parser.parse_args()
 
     if cfg.quiet:
@@ -164,17 +179,50 @@ def score_command() -> None:
     if not cfg.disable_cache:
         model.set_embedding_cache()
 
+    if cfg.doc:
+        print('Running at document level')
+        with open(cfg.doc(), encoding="utf-8") as fp:
+            doc_ids = [line.strip() for line in fp.readlines()]
+        model.set_document_level()
+
     with open(cfg.sources(), encoding="utf-8") as fp:
         sources = [line.strip() for line in fp.readlines()]
-
-    translations = []
-    for path_fr in cfg.translations:
-        with open(path_fr(), encoding="utf-8") as fp:
-            translations.append([line.strip() for line in fp.readlines()])
+        if cfg.doc:
+            print('Adding source context to source')
+            sources = add_context(orig_txt=sources,
+                                  context=sources,
+                                  doc_ids=doc_ids,
+                                  ws=cfg.doc_window_size)
 
     if cfg.references is not None:
         with open(cfg.references(), encoding="utf-8") as fp:
             references = [line.strip() for line in fp.readlines()]
+
+    translations = []
+    for path_fr in cfg.translations:
+        with open(path_fr(), encoding="utf-8") as fp:
+            translation = [line.strip() for line in fp.readlines()]
+            if cfg.doc:
+                if model.requires_references():
+                    print('Adding reference context to MT')
+                    translation = add_context(orig_txt=translation,
+                                              context=references,
+                                              doc_ids=doc_ids,
+                                              ws=cfg.doc_window_size)
+                    print('Adding reference context to reference')
+                    references = add_context(orig_txt=references,
+                                             context=references,
+                                             doc_ids=doc_ids,
+                                             ws=cfg.doc_window_size)
+                else:
+                    print('Adding MT context to MT')
+                    translation = add_context(orig_txt=translation,
+                                              context=translation,
+                                              doc_ids=doc_ids,
+                                              ws=cfg.doc_window_size)
+            translations.append(translation)
+
+    if cfg.references is not None:
         data = {
             "src": [sources for _ in translations],
             "mt": translations,

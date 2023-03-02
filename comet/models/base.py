@@ -86,6 +86,7 @@ class CometModel(ptl.LightningModule, metaclass=abc.ABCMeta):
             loaded consecutively for each epoch. Defaults to None.
         validation_data (Optional[List[str]]): List of paths to validation data.
             Validation results are averaged across validation set. Defaults to None.
+        doc (Optional[bool]): Document level metrics
     """
 
     def __init__(
@@ -109,6 +110,7 @@ class CometModel(ptl.LightningModule, metaclass=abc.ABCMeta):
         train_data: Optional[List[str]] = None,
         validation_data: Optional[List[str]] = None,
         class_identifier: Optional[str] = None,
+        doc: Optional[bool] = False,
     ) -> None:
         super().__init__()
         self.save_hyperparameters()
@@ -140,8 +142,14 @@ class CometModel(ptl.LightningModule, metaclass=abc.ABCMeta):
         self.mc_dropout = False  # Flag used to control usage of MC Dropout
         self.caching = False  # Flag used to control Embedding Caching
 
+        self.doc = doc
+
         # If not defined here, metrics will not live in the same device as our model.
         self.init_metrics()
+
+    def set_document_level(self):
+        """Function that extend COMET to the document level."""
+        self.doc = True
 
     def set_mc_dropout(self, value: int):
         """Sets Monte Carlo Dropout runs per sample.
@@ -330,7 +338,12 @@ class CometModel(ptl.LightningModule, metaclass=abc.ABCMeta):
 
         elif self.hparams.pool == "max":
             sentemb = max_pooling(
-                input_ids, embeddings, self.encoder.tokenizer.pad_token_id
+                input_ids,
+                embeddings,
+                attention_mask,
+                self.encoder.tokenizer.pad_token_id,
+                self.encoder.tokenizer.sep_token_id,
+                self.doc
             )
 
         elif self.hparams.pool == "avg":
@@ -339,6 +352,8 @@ class CometModel(ptl.LightningModule, metaclass=abc.ABCMeta):
                 embeddings,
                 attention_mask,
                 self.encoder.tokenizer.pad_token_id,
+                self.encoder.tokenizer.sep_token_id,
+                self.doc
             )
 
         elif self.hparams.pool == "cls":

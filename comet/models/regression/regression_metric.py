@@ -68,6 +68,7 @@ class RegressionMetric(CometModel):
         hidden_sizes (List[int]): Hidden sizes for the Feed Forward regression.
         activations (str): Feed Forward activation function.
         final_activation (str): Feed Forward final activation.
+        doc (bool): Document level metrics
     """
 
     def __init__(
@@ -93,6 +94,7 @@ class RegressionMetric(CometModel):
         hidden_sizes: List[int] = [3072, 1024],
         activations: str = "Tanh",
         final_activation: Optional[str] = None,
+        doc: Optional[bool] = False,
     ) -> None:
         super().__init__(
             nr_frozen_epochs=nr_frozen_epochs,
@@ -113,6 +115,7 @@ class RegressionMetric(CometModel):
             batch_size=batch_size,
             train_data=train_data,
             validation_data=validation_data,
+            doc=doc,
             class_identifier="regression_metric",
         )
         self.save_hyperparameters()
